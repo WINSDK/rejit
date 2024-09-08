@@ -1,0 +1,4 @@
+rejit
+=====
+
+cargo run -- <regex_expression> <input_string>
