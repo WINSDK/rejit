@@ -77,10 +77,10 @@ impl<'a> Context<'a> {
                     }
                 }
 
-                return Ok(Regex::Multi(multi));
+                Ok(Regex::Multi(multi))
             }
-            Err(Error::EmptyExpr) => return Ok(p1),
-            Err(err) => return Err(err),
+            Err(Error::EmptyExpr) => Ok(p1),
+            Err(err) => Err(err),
         }
     }
 
@@ -115,7 +115,7 @@ impl<'a> Context<'a> {
     }
 
     fn parse_char_or_any(&mut self) -> Result<Regex, Error> {
-        if let Some(chr @ ('a'..'z' | 'A'..'Z' | '0'..'9')) = self.current_char() {
+        if let Some(chr @ ('a'..='z' | 'A'..='Z' | '0'..='9')) = self.current_char() {
             self.offset += 1;
 
             if self.consume(|c| c == '*') {
@@ -264,7 +264,7 @@ fn run(program: &str, input: &str) {
 }
 
 fn gen_program(ctx: &Context, regex: &Regex) -> String {
-    let mut rust_progam = format!("
+    let mut rust_progam = "
 fn main() {{
     let Some(input) = std::env::args().skip(1).next() else {{
         eprintln!(\"Program expects input string.\");
@@ -273,19 +273,19 @@ fn main() {{
     if !func_0(&mut (&input as &str)) {{
         std::process::exit(1);
     }}
-}}");
+}}".to_string();
 
     recurse_gen_program(&mut rust_progam, ctx, regex, 0);
     rust_progam
 }
 
 fn main() {
-    let Some(regex) = std::env::args().skip(1).next() else {
+    let Some(regex) = std::env::args().nth(1) else {
         eprintln!("Program expects regex expression.");
         std::process::exit(1);
     };
 
-    let Some(input) = std::env::args().skip(2).next() else {
+    let Some(input) = std::env::args().nth(2) else {
         eprintln!("Program expects input string.");
         std::process::exit(1);
     };
