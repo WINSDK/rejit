@@ -3,6 +3,9 @@ use std::io::Write;
 use std::process::Command;
 use sha2::{Sha256, Digest};
 
+#[cfg(test)]
+mod tests;
+
 #[derive(Debug)]
 enum Error {
     EmptyExpr,
@@ -15,7 +18,7 @@ enum Error {
 //    | [a-z]*
 //    | [A-Z]*
 //    | [0-9]*
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 enum Regex {
     Any(RegexRef),
     Many(RegexRef),
@@ -224,7 +227,7 @@ fn run(program: &str, input: &str) {
     let hash_hex = format!("{:x}", hash_result);
 
     let file_path = format!("/tmp/{}.rs", hash_hex);
-    
+
     // Write the program to /tmp/{hash}.rs
     let mut file = File::create(&file_path).expect("Failed to create file");
     file.write_all(program.as_bytes()).expect("Failed to write to file");
@@ -240,7 +243,7 @@ fn run(program: &str, input: &str) {
         .status()
         .expect("Failed to compile the program");
 
-        println!("Binary written to {output_binary:?}");
+    println!("Binary written to {output_binary:?}");
 
     if compile_status.success() {
         // Execute the compiled program.
@@ -260,6 +263,22 @@ fn run(program: &str, input: &str) {
     }
 }
 
+fn gen_program(ctx: &Context, regex: &Regex) -> String {
+    let mut rust_progam = format!("
+fn main() {{
+    let Some(input) = std::env::args().skip(1).next() else {{
+        eprintln!(\"Program expects input string.\");
+        std::process::exit(1);
+    }};
+    if !func_0(&mut (&input as &str)) {{
+        std::process::exit(1);
+    }}
+}}");
+
+    recurse_gen_program(&mut rust_progam, ctx, regex, 0);
+    rust_progam
+}
+
 fn main() {
     let Some(regex) = std::env::args().skip(1).next() else {
         eprintln!("Program expects regex expression.");
@@ -273,22 +292,16 @@ fn main() {
 
     let mut ctx = Context::new(&regex);
     let regex = match ctx.parse() {
-        Ok(regex) => regex,
+        Ok(regex) => {
+            println!("Generated regex: {regex:?}.");
+            regex
+        },
         Err(err) => {
             eprintln!("Failed to compile regex: {err:?}.");
             std::process::exit(1);
         }
     };
-    dbg!(&regex);
 
-    let mut test_rust_progam = format!("
-fn main() {{
-    let mut input = \"{input}\";
-    if !func_0(&mut input) {{
-        std::process::exit(1);
-    }}
-}}");
-
-    recurse_gen_program(&mut test_rust_progam, &ctx, &regex, 0);
-    run(&test_rust_progam, &input);
+    let program = gen_program(&ctx, &regex);
+    run(&program, &input);
 }
