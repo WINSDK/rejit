@@ -219,7 +219,7 @@ fn func_{depth}(input: &mut &str) -> bool {{
     }
 }
 
-fn run(program: &str, input: &str) {
+fn compile(program: &str) {
     // Hash the content.
     let mut hasher = Sha256::new();
     hasher.update(program.as_bytes());
@@ -233,46 +233,32 @@ fn run(program: &str, input: &str) {
     file.write_all(program.as_bytes()).expect("Failed to write to file");
 
     // Compile the program using rustc
-    let output_binary = format!("/tmp/{}", hash_hex);
     let compile_status = Command::new("rustc")
         .arg(&file_path)
         .arg("-o")
-        .arg(&output_binary)
+        .arg("libmatcher.so")
+        .arg("-Cdebuginfo=0")
         .arg("-Copt-level=3")
+        .arg("-Cstrip=symbols")
         .arg("-Dwarnings")
+        .arg("--crate-type=cdylib")
         .status()
         .expect("Failed to compile the program");
 
-    println!("Binary written to {output_binary:?}");
-
-    if compile_status.success() {
-        // Execute the compiled program.
-        let execution_status = Command::new(output_binary)
-            .arg(input)
-            .status()
-            .expect("Failed to execute the compiled program.");
-
-        if execution_status.success() {
-            eprintln!("Input string matched!");
-        } else {
-            eprintln!("Input failed matched.");
-            std::process::exit(1);
-        }
-    } else {
+    if !compile_status.success() {
         eprintln!("Compilation failed (should not happen).");
     }
+
+    println!("Library written to 'libmatcher.so'.");
 }
 
 fn gen_program(ctx: &Context, regex: &Regex) -> String {
     let mut rust_progam = "
-fn main() {{
-    let Some(input) = std::env::args().skip(1).next() else {{
-        eprintln!(\"Program expects input string.\");
-        std::process::exit(1);
-    }};
-    if !func_0(&mut (&input as &str)) {{
-        std::process::exit(1);
-    }}
+#[no_mangle]
+pub unsafe extern \"C\" fn matches(c_input: *const i8) -> bool {{
+    let c_input = std::ffi::CStr::from_ptr(c_input);
+    let input = c_input.to_str().unwrap_unchecked();
+    func_0(&mut (&input as &str))
 }}".to_string();
 
     recurse_gen_program(&mut rust_progam, ctx, regex, 0);
@@ -282,11 +268,6 @@ fn main() {{
 fn main() {
     let Some(regex) = std::env::args().nth(1) else {
         eprintln!("Program expects regex expression.");
-        std::process::exit(1);
-    };
-
-    let Some(input) = std::env::args().nth(2) else {
-        eprintln!("Program expects input string.");
         std::process::exit(1);
     };
 
@@ -303,5 +284,5 @@ fn main() {
     };
 
     let program = gen_program(&ctx, &regex);
-    run(&program, &input);
+    compile(&program);
 }
